@@ -9,8 +9,18 @@ import (
 	"os/user"
 	"strings"
 
-	"github.com/mdirkse/i3ipc"
+	"go.i3wm.org/i3/v4"
 )
+
+type vPrinter func(format string, v ...interface{})
+
+func get_verbose_print(verbose bool) vPrinter {
+	return func(format string, v ...interface{}) {
+		if verbose {
+			fmt.Printf(format, v...)
+		}
+	}
+}
 
 func main() {
 	usr, err := user.Current()
@@ -22,6 +32,8 @@ func main() {
 	var configFileName = flag.String("c", usr.HomeDir+"/.config/i3icons/i3icons2.config", "config file")
 	var verbose = flag.Bool("v", false, "verbose")
 	flag.Parse()
+
+	var vprintf = get_verbose_print(*verbose)
 
 	// Open our configFile
 	configFile, err := os.Open(*configFileName)
@@ -43,34 +55,36 @@ func main() {
 		}
 	}
 
-	// open I3IPC socket and subscribe to window events
-	ipcsocket, _ := i3ipc.GetIPCSocket()
-	i3ipc.StartEventListener()
-	channel, err := i3ipc.Subscribe(i3ipc.I3WindowEvent)
-	EventLoop(channel, ipcsocket, config, *verbose)
-
-}
-
-// EventLoop - main event loop
-func EventLoop(events chan i3ipc.Event, ipcsocket *i3ipc.IPCSocket, config map[string]string, verbose bool) {
-	for e := range events {
-		fmt.Println(e.Change)
-		if e.Change != "new" && e.Change != "close" {
+	// subscribe to window events
+	recv := i3.Subscribe(i3.WindowEventType)
+	for recv.Next() {
+		ev := recv.Event().(*i3.WindowEvent)
+		if ev.Change != "new" && ev.Change != "close" && ev.Change != "move" {
 			continue
 		}
-		tree, _ := ipcsocket.GetTree()
-		wss := tree.Workspaces()
+
+		tree, err := i3.GetTree()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		wss, err := i3.GetWorkspaces()
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		for _, ws := range wss {
 			name := ws.Name
 			number := strings.Split(name, " ")[0]
-			windows := ws.Leaves()
+			windows := Leaves(tree, int64(ws.ID))
 			newname := number
+			vprintf("{%s} has wins:\n", name)
+
 			windownames := make([]string, len(windows))
 			for i, win := range windows {
-				winname := strings.ToLower(win.Window_Properties.Class)
-				if verbose {
-					fmt.Println(winname)
-				}
+				winname := strings.ToLower(win.WindowProperties.Class)
+				vprintf("\t%s\n", winname)
+
 				// rename window to config item, if present
 				if val, ok := config[winname]; ok {
 					winname = val
@@ -94,7 +108,10 @@ func EventLoop(events chan i3ipc.Event, ipcsocket *i3ipc.IPCSocket, config map[s
 					newname = fmt.Sprintf("%s %s", newname, windowname)
 				}
 			}
-			ipcsocket.Command("rename workspace \"" + name + "\" to " + newname)
+			vprintf("[%s] -> [%s]\n", name, newname)
+			if name != newname {
+				i3.RunCommand("rename workspace \"" + name + "\" to " + newname)
+			}
 		}
 	}
 }
