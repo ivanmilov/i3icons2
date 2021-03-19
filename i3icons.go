@@ -31,6 +31,7 @@ func main() {
 	// handle command line arguments
 	var configFileName = flag.String("c", usr.HomeDir+"/.config/i3icons/i3icons2.config", "config file")
 	var verbose = flag.Bool("v", false, "verbose")
+	var default_icon = flag.String("d", "", "set default workspace icon")
 	flag.Parse()
 
 	var vprintf = get_verbose_print(*verbose)
@@ -56,10 +57,15 @@ func main() {
 	}
 
 	// subscribe to window events
-	recv := i3.Subscribe(i3.WindowEventType)
+	recv := i3.Subscribe(i3.WindowEventType, i3.WorkspaceEventType)
 	for recv.Next() {
-		ev := recv.Event().(*i3.WindowEvent)
-		if ev.Change != "new" && ev.Change != "close" && ev.Change != "move" {
+		ev := recv.Event()
+		if win_ev, ok := ev.(*i3.WindowEvent); ok && win_ev.Change != "new" && win_ev.Change != "close" && win_ev.Change != "move" {
+			vprintf("skip win ev [%s]\n", win_ev.Change)
+			continue
+		}
+		if ws_ev, ok := recv.Event().(*i3.WorkspaceEvent); ok && ws_ev.Change != "init" && ws_ev.Change != "empty" {
+			vprintf("skip ws ev [%s]\n", ws_ev.Change)
 			continue
 		}
 
@@ -108,10 +114,19 @@ func main() {
 					newname = fmt.Sprintf("%s %s", newname, windowname)
 				}
 			}
-			vprintf("[%s] -> [%s]\n", name, newname)
-			if name != newname {
-				i3.RunCommand("rename workspace \"" + name + "\" to " + newname)
+
+			if newname == number {
+				vprintf("\t\t\tset default for ws [%s]\n", newname)
+				newname += " " + *default_icon
+			}
+			if name != newname /* && newname != number */ {
+				vprintf("[%s] -> [%s]\n", name, newname)
+				cmd := "rename workspace \"" + name + "\" to \"" + newname + "\""
+				vprintf("%s\n", cmd)
+
+				i3.RunCommand(cmd)
 			}
 		}
+		vprintf("-----------------\n")
 	}
 }
