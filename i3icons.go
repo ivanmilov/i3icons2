@@ -74,10 +74,12 @@ func main() {
 			log.Fatal(err)
 		}
 
-		wss, err := i3.GetWorkspaces()
-		if err != nil {
-			log.Fatal(err)
-		}
+		// i3-msg -t get_workspaces doesn't fill IDs for the workspaces
+		// wss, err := i3.GetWorkspaces()
+		// if err != nil {
+		// 	log.Fatal(err)
+		// }
+		wss := GetWorkspaces(tree)
 
 		for _, ws := range wss {
 			name := ws.Name

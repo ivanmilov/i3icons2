@@ -10,6 +10,10 @@ func Descendents(tree i3.Tree, node_id int64) []*i3.Node {
 
 	node := tree.Root.FindChild(func(n *i3.Node) bool { return n.ID == i3.NodeID(node_id) })
 
+	if node == nil {
+		return nil
+	}
+
 	var collectDescendents func(*i3.Node, []*i3.Node) []*i3.Node
 
 	// Collects descendent nodes recursively
@@ -45,4 +49,28 @@ func Leaves(tree i3.Tree, node_id int64) (leaves []*i3.Node) {
 		}
 	}
 	return
+}
+
+// i3-msg -t get_workspaces doesn't fill IDs for the workspaces
+// This function as a workaround
+func GetWorkspaces(tree i3.Tree) []i3.Node {
+
+	predicate := func(node *i3.Node) bool {
+		return node.Type == "workspace" && node.Name != "__i3_scratch"
+	}
+
+	wss := []i3.Node{}
+	wss = AppendChild(wss, tree.Root, predicate)
+
+	return wss
+}
+
+func AppendChild(wss []i3.Node, n *i3.Node, predicate func(*i3.Node) bool) []i3.Node {
+	if predicate(n) {
+		wss = append(wss, *n)
+	}
+	for _, c := range n.Nodes {
+		wss = AppendChild(wss, c, predicate)
+	}
+	return wss
 }
