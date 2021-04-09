@@ -7,8 +7,10 @@ import (
 	"log"
 	"os"
 	"os/user"
+	"sort"
 	"strings"
 
+	"github.com/tidwall/gjson"
 	"go.i3wm.org/i3/v4"
 )
 
@@ -22,6 +24,11 @@ func get_verbose_print(verbose bool) vPrinter {
 	}
 }
 
+func contains(s []string, searchterm string) bool {
+	i := sort.SearchStrings(s, searchterm)
+	return i < len(s) && s[i] == searchterm
+}
+
 func main() {
 	usr, err := user.Current()
 	if err != nil {
@@ -29,32 +36,34 @@ func main() {
 	}
 
 	// handle command line arguments
-	var configFileName = flag.String("c", usr.HomeDir+"/.config/i3icons/i3icons2.config", "config file")
+	var configFileName = flag.String("c", usr.HomeDir+"/.config/i3icons/i3icons2.json", "config file")
 	var verbose = flag.Bool("v", false, "verbose")
 	var default_icon = flag.String("d", "", "set default workspace icon")
 	flag.Parse()
 
 	var vprintf = get_verbose_print(*verbose)
 
-	// Open our configFile
-	configFile, err := os.Open(*configFileName)
+	conf, err := ioutil.ReadFile(*configFileName)
 	if err != nil {
 		fmt.Println(err)
 		flag.Usage()
 		os.Exit(1)
 	}
-	defer configFile.Close()
 
-	// read our config File and write to hash map
-	byteValue, _ := ioutil.ReadAll(configFile)
-	configLines := strings.Split(string(byteValue), "\n")
+	jconf := gjson.Get(string(conf), "config")
 	config := make(map[string]string)
-	for _, ci := range configLines {
-		p := strings.Split(string(ci), "=")
-		if len(p) == 2 {
-			config[p[0]] = p[1]
-		}
-	}
+	jconf.ForEach(func(key, val gjson.Result) bool {
+		config[key.String()] = val.String()
+		return true
+	})
+
+	jignore := gjson.Get(string(conf), "ignore")
+	var ignore []string
+	jignore.ForEach(func(key, val gjson.Result) bool {
+		ignore = append(ignore, val.String())
+		return true
+	})
+	sort.Strings(ignore)
 
 	// subscribe to window events
 	recv := i3.Subscribe(i3.WindowEventType, i3.WorkspaceEventType)
@@ -91,6 +100,11 @@ func main() {
 			windownames := make([]string, len(windows))
 			for i, win := range windows {
 				winname := strings.ToLower(win.WindowProperties.Class)
+
+				if contains(ignore, winname) {
+					vprintf("\t%s is in ignore\n", winname)
+					continue
+				}
 				vprintf("\t%s\n", winname)
 
 				// rename window to config item, if present
