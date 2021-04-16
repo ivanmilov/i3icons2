@@ -110,7 +110,7 @@ func main() {
 				// rename window to config item, if present
 				if val, ok := config[winname]; ok {
 					winname = val
-				} else if len(winname) > 7 {
+				} else if len(winname) > 8 {
 					winname = winname[:4] + ".." + winname[len(winname)-3:]
 				}
 				// check if workspace name already contains window title
